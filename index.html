@@ -123,31 +123,7 @@
             transition: transform 0.7s cubic-bezier(0.25, 1, 0.5, 1); /* Transisi putaran yang licin */
             transform: rotate(0deg); /* Akan diubah oleh JavaScript */
         }
-
-        /* --- Peta --- */
-        #map {
-            height: 350px;
-            width: 100%;
-            margin-top: 30px;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-
-        /* --- Mesej Ralat --- */
-        #error-message {
-            color: #d9534f; /* Warna merah untuk ralat */
-            font-weight: 600;
-            margin-top: 20px;
-        }
-
-        /* --- Footer --- */
-        footer {
-            margin-top: 40px;
-            padding-bottom: 20px;
-            font-size: 0.9rem;
-            color: #888;
-        }
-        
+ 
         /* --- Responsif untuk peranti kecil --- */
         @media (max-width: 600px) {
             body {
@@ -232,6 +208,8 @@
         let userMarker;
         let kaabaMarker;
         let qiblaLine;
+        let calculatedQiblaAngle = 0; // Simpan sudut kiblat
+        let isCompassUpdating = false; // Bendera untuk menukar gaya transisi
 
         // --- Logik Utama ---
 
@@ -272,14 +250,14 @@
             const userLat = position.coords.latitude;
             const userLon = position.coords.longitude;
 
-            // 1. Kira sudut Kiblat
-            const qiblaAngle = calculateQibla(userLat, userLon);
+            // 1. Kira sudut Kiblat dan simpannya
+            calculatedQiblaAngle = calculateQibla(userLat, userLon);
 
-            // 2. Paparkan keputusan teks
-            resultText.textContent = `Arah Kiblat dari lokasi anda: ${qiblaAngle.toFixed(2)}° dari utara sebenar.`;
+            // 2. Paparkan keputusan teks (dengan arahan baharu)
+            resultText.textContent = `Arah Kiblat: ${calculatedQiblaAngle.toFixed(2)}°. Hala peranti anda sehingga panah menghala ke 'U'.`;
 
-            // 3. Pusingkan jarum kompas
-            compassArrow.style.transform = `rotate(${qiblaAngle}deg)`;
+            // 3. (DIALIH) Putaran kompas kini dikendalikan oleh handleOrientation
+            // compassArrow.style.transform = `rotate(${qiblaAngle}deg)`;
 
             // 4. Paparkan keseluruhan bahagian keputusan
             resultContainer.style.display = 'block';
@@ -289,6 +267,9 @@
             
             // Pulihkan butang
             resetButton();
+            
+            // 7. Mula mendengar kompas peranti
+            startCompassListener();
         }
 
         function errorCallback(error) {
@@ -403,6 +384,91 @@
             findBtn.textContent = 'Jejak Kiblat Saya Sekarang';
         }
 
+        // --- FUNGSI KOMPAS 'LIVE' BARU ---
+
+        /**
+         * Mula mendengar API Orientasi Peranti (Kompas)
+         */
+        function startCompassListener() {
+            // Semak kebenaran untuk iOS 13+
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission()
+                    .then(state => {
+                        if (state === 'granted') {
+                            window.addEventListener('deviceorientation', handleOrientation);
+                        } else {
+                            // Pengguna menolak kebenaran
+                            showError("Kebenaran orientasi ditolak. Menunjukkan arah statik.");
+                            fallbackToStaticCompass();
+                        }
+                    })
+                    .catch(() => {
+                        // Ralat (cth: bukan dalam konteks selamat HTTPS)
+                        showError("Ralat meminta kebenaran orientasi. Menunjukkan arah statik.");
+                        fallbackToStaticCompass();
+                    });
+            } else if ('DeviceOrientationEvent' in window) {
+                // Android atau iOS < 13
+                window.addEventListener('deviceorientation', handleOrientation);
+            } else {
+                // Pelayar tidak disokong
+                showError("Peranti anda tidak menyokong kompas 'live'. Menunjukkan arah statik.");
+                fallbackToStaticCompass();
+            }
+        }
+
+        /**
+         * Mengendalikan kemas kini orientasi peranti (kompas).
+         */
+        function handleOrientation(event) {
+            let heading = null;
+
+            if (event.webkitCompassHeading) {
+                // iOS
+                heading = event.webkitCompassHeading;
+            } else if (event.absolute === true && event.alpha !== null) {
+                // Standard API (absolute - merujuk kepada Utara Sebenar)
+                heading = event.alpha;
+            } else if (event.alpha !== null) {
+                // Sesetengah peranti (cth: Android) mungkin memberi event.alpha
+                // tanpa 'absolute=true'. Ini mungkin Utara Magnetik,
+                // tetapi kita terima ia untuk demo ini.
+                heading = event.alpha;
+            }
+
+            if (heading !== null) {
+                if (!isCompassUpdating) {
+                    // Tukar kepada transisi yang pantas dan licin untuk kemas kini 'live'
+                    // 'linear' adalah lebih baik daripada 'cubic-bezier' untuk kemas kini berterusan
+                    compassArrow.style.transition = 'transform 0.1s linear';
+                    isCompassUpdating = true;
+                }
+
+                // Logik putaran:
+                // 'calculatedQiblaAngle' ialah bearing Kiblat dari Utara (cth: 292°)
+                // 'heading' ialah bearing peranti dari Utara (cth: 45° jika menghala ke Timur Laut)
+                // Kita perlu memaparkan sudut *relatif* kepada peranti.
+                // Putaran = SudutKiblat - HalaTujuPeranti
+                // Apabila 'heading' sama dengan 'calculatedQiblaAngle', putaran akan jadi 0.
+                // Ini bermakna panah akan menunjuk ke 'U' (atas), menandakan peranti menghala ke Kiblat.
+                const rotation = calculatedQiblaAngle - heading;
+
+                compassArrow.style.transform = `rotate(${rotation}deg)`;
+            }
+        }
+
+        /**
+         * Jika kompas 'live' gagal, tunjukkan panah statik.
+         */
+        function fallbackToStaticCompass() {
+            // Pastikan transisi asal (bouncy) digunakan untuk putaran sekali ini
+            compassArrow.style.transition = 'transform 0.7s cubic-bezier(0.25, 1, 0.5, 1)';
+            compassArrow.style.transform = `rotate(${calculatedQiblaAngle}deg)`;
+            // Kemas kini teks untuk mencerminkan mod statik
+            resultText.textContent = `Arah Kiblat: ${calculatedQiblaAngle.toFixed(2)}° dari utara sebenar. (Mod statik)`;
+        }
+
     </script>
 </body>
 </html>
+
