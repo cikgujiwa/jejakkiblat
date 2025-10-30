@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jejak Kiblat - Penentu Arah</title>
+    
+    <!-- 1. Muatkan CSS untuk Leaflet.js (Peta) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossorigin=""/>
+
+    <style>
+        /* --- Gaya Asas & Tipografi --- */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #ffffff;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            text-align: center;
+            flex-grow: 1;
+        }
+
+        /* --- Tajuk --- */
+        h1 {
+            font-size: 2.8rem;
+            font-weight: 700;
+            color: #222;
+            margin-bottom: 20px;
+        }
+
+        /* --- Butang Utama --- */
+        #find-qibla-btn {
+            background-color: #28a745; /* Warna hijau lembut */
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.1s ease;
+        }
+
+        #find-qibla-btn:hover {
+            background-color: #218838; /* Warna lebih gelap apabila hover */
+        }
+
+        #find-qibla-btn:active {
+            transform: scale(0.98);
+        }
+
+        #find-qibla-btn:disabled {
+            background-color: #aaa;
+            cursor: not-allowed;
+        }
+
+        /* --- Bahagian Keputusan (Tersembunyi secara lalai) --- */
+        #result-container {
+            margin-top: 30px;
+            display: none; /* Akan ditukar kepada 'block' oleh JavaScript */
+            animation: fadeIn 0.5s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        #result-text {
+            font-size: 1.3rem;
+            font-weight: 500;
+            color: #28a745;
+            margin-bottom: 25px;
+        }
+
+        /* --- Kompas Visual --- */
+        .compass-container {
+            width: 180px;
+            height: 180px;
+            border: 3px solid #eee;
+            border-radius: 50%;
+            margin: 20px auto;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        /* Tanda 'Utara' pada kompas */
+        .compass-container::before {
+            content: 'U'; /* 'U' untuk Utara */
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-weight: bold;
+            font-size: 1.1rem;
+            color: #555;
+        }
+        
+        /* Jarum Kompas (Panah Kiblat) */
+        #compass-arrow {
+            width: 0;
+            height: 0;
+            border-left: 12px solid transparent;
+            border-right: 12px solid transparent;
+            border-bottom: 80px solid #28a745; /* Panah hijau */
+            transform-origin: bottom center;
+            transition: transform 0.7s cubic-bezier(0.25, 1, 0.5, 1); /* Transisi putaran yang licin */
+            transform: rotate(0deg); /* Akan diubah oleh JavaScript */
+        }
+
+        /* --- Peta --- */
+        #map {
+            height: 350px;
+            width: 100%;
+            margin-top: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        /* --- Mesej Ralat --- */
+        #error-message {
+            color: #d9534f; /* Warna merah untuk ralat */
+            font-weight: 600;
+            margin-top: 20px;
+        }
+
+        /* --- Footer --- */
+        footer {
+            margin-top: 40px;
+            padding-bottom: 20px;
+            font-size: 0.9rem;
+            color: #888;
+        }
+        
+        /* --- Responsif untuk peranti kecil --- */
+        @media (max-width: 600px) {
+            body {
+                padding: 15px;
+            }
+            h1 {
+                font-size: 2.2rem;
+            }
+            #find-qibla-btn {
+                width: 100%;
+                padding: 18px;
+            }
+            #result-text {
+                font-size: 1.15rem;
+            }
+            .compass-container {
+                width: 150px;
+                height: 150px;
+            }
+            #compass-arrow {
+                border-bottom-width: 65px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        
+        <!-- Tajuk -->
+        <h1>Jejak Kiblat</h1>
+
+        <!-- Butang Utama -->
+        <button id="find-qibla-btn">Jejak Kiblat Saya Sekarang</button>
+
+        <!-- Mesej Ralat (tersembunyi) -->
+        <p id="error-message"></p>
+
+        <!-- Bahagian Keputusan (tersembunyi) -->
+        <div id="result-container">
+            <!-- Teks Keputusan -->
+            <p id="result-text"></p>
+
+            <!-- Kompas Visual -->
+            <div class="compass-container">
+                <div id="compass-arrow"></div>
+            </div>
+
+            <!-- Peta Interaktif -->
+            <div id="map"></div>
+        </div>
+
+        <!-- Footer -->
+        <footer>
+            Dibangunkan oleh Cikgu Jiwa 🌙 | © 2025
+        </footer>
+
+    </div>
+
+    <!-- 2. Muatkan JavaScript untuk Leaflet.js (Peta) -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+            crossorigin=""></script>
+
+    <!-- 3. Skrip Aplikasi Utama -->
+    <script>
+        // --- Pembolehubah Global & Rujukan DOM ---
+        
+        // Koordinat Kaabah (Latitud & Longitud)
+        const KAABA_LAT = 21.4225;
+        const KAABA_LON = 39.8262;
+
+        // Rujukan elemen DOM
+        const findBtn = document.getElementById('find-qibla-btn');
+        const resultContainer = document.getElementById('result-container');
+        const resultText = document.getElementById('result-text');
+        const errorMsg = document.getElementById('error-message');
+        const compassArrow = document.getElementById('compass-arrow');
+
+        // Pembolehubah untuk peta Leaflet (untuk elak ralat jika dimulakan semula)
+        let map;
+        let userMarker;
+        let kaabaMarker;
+        let qiblaLine;
+
+        // --- Logik Utama ---
+
+        // Tambah pendengar acara pada butang
+        findBtn.addEventListener('click', findQibla);
+
+        function findQibla() {
+            // Bersihkan ralat & keputusan lama
+            errorMsg.textContent = '';
+            resultContainer.style.display = 'none';
+
+            // Tetapkan keadaan 'memuat' pada butang
+            findBtn.disabled = true;
+            findBtn.textContent = 'Mencari Lokasi...';
+
+            // 1. Semak jika Geolokasi disokong
+            if (!navigator.geolocation) {
+                showError("Maaf, pelayar anda tidak menyokong Geolokasi.");
+                return;
+            }
+
+            // 2. Semak jika pengguna berada di luar talian
+            if (!navigator.onLine) {
+                showError("Sila semak sambungan internet anda. Anda kelihatan di luar talian.");
+                return;
+            }
+
+            // 3. Dapatkan lokasi semasa
+            navigator.geolocation.getCurrentPosition(successCallback, errorCallback, {
+                enableHighAccuracy: true, // Cuba dapatkan lokasi terbaik
+                timeout: 10000 // Masa tamat 10 saat
+            });
+        }
+
+        // --- Fungsi Callback Geolokasi ---
+
+        function successCallback(position) {
+            const userLat = position.coords.latitude;
+            const userLon = position.coords.longitude;
+
+            // 1. Kira sudut Kiblat
+            const qiblaAngle = calculateQibla(userLat, userLon);
+
+            // 2. Paparkan keputusan teks
+            resultText.textContent = `Arah Kiblat dari lokasi anda: ${qiblaAngle.toFixed(2)}° dari utara sebenar.`;
+
+            // 3. Pusingkan jarum kompas
+            compassArrow.style.transform = `rotate(${qiblaAngle}deg)`;
+
+            // 4. Paparkan keseluruhan bahagian keputusan
+            resultContainer.style.display = 'block';
+
+            // 5. Paparkan peta
+            showMap(userLat, userLon);
+            
+            // Pulihkan butang
+            resetButton();
+        }
+
+        function errorCallback(error) {
+            // Paparkan mesej ralat yang sesuai
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    showError("Anda telah menafikan kebenaran lokasi. Sila benarkan lokasi dalam tetapan pelayar anda untuk menggunakan ciri ini.");
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    showError("Maklumat lokasi anda tidak dapat diperoleh. Sila cuba lagi.");
+                    break;
+                case error.TIMEOUT:
+                    showError("Masa tamat semasa cuba mendapatkan lokasi. Sila cuba lagi.");
+                    break;
+                default:
+                    showError("Berlaku ralat yang tidak diketahui semasa mendapatkan lokasi.");
+                    break;
+            }
+        }
+
+        // --- Fungsi Bantuan (Helper) ---
+
+        /**
+         * Mengira bearing (sudut) dari lokasi pengguna ke Kaabah.
+         * Formula Haversine/Bearing.
+         */
+        function calculateQibla(lat, lon) {
+            // Tukar darjah ke radian
+            const toRad = (deg) => deg * (Math.PI / 180);
+            const toDeg = (rad) => rad * (180 / Math.PI);
+
+            const phiK = toRad(KAABA_LAT);
+            const lambdaK = toRad(KAABA_LON);
+            const phiU = toRad(lat);
+            const lambdaU = toRad(lon);
+
+            // Formula bearing
+            const deltaLambda = lambdaK - lambdaU;
+            
+            const y = Math.sin(deltaLambda) * Math.cos(phiK);
+            const x = Math.cos(phiU) * Math.sin(phiK) -
+                      Math.sin(phiU) * Math.cos(phiK) * Math.cos(deltaLambda);
+            
+            let bearing = toDeg(Math.atan2(y, x));
+
+            // Normalkan bearing ke 0-360 darjah (dari Utara)
+            bearing = (bearing + 360) % 360;
+
+            return bearing;
+        }
+
+        /**
+         * Memaparkan peta Leaflet dengan penanda dan garisan.
+         */
+        function showMap(userLat, userLon) {
+            const userCoords = [userLat, userLon];
+            const kaabaCoords = [KAABA_LAT, KAABA_LON];
+
+            // 1. Mulakan Peta (jika belum)
+            if (!map) {
+                map = L.map('map');
+                // Guna OpenStreetMap sebagai lapisan tile
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19,
+                    attribution: '© <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                }).addTo(map);
+            }
+
+            // 2. Tetapkan Penanda Pengguna
+            if (!userMarker) {
+                userMarker = L.marker(userCoords).addTo(map);
+            } else {
+                userMarker.setLatLng(userCoords);
+            }
+            userMarker.bindPopup('<b>Lokasi Anda</b>').openPopup();
+
+            // 3. Tetapkan Penanda Kaabah (hanya sekali)
+            if (!kaabaMarker) {
+                kaabaMarker = L.marker(kaabaCoords).addTo(map);
+                kaabaMarker.bindPopup('<b>Kaabah</b>');
+            }
+
+            // 4. Lukis Garisan Kiblat (Polylin)
+            const points = [userCoords, kaabaCoords];
+            if (!qiblaLine) {
+                qiblaLine = L.polyline(points, {
+                    color: '#28a745', // Warna hijau
+                    weight: 3,
+                    opacity: 0.8
+                }).addTo(map);
+            } else {
+                qiblaLine.setLatLngs(points);
+            }
+
+            // 5. Zooms peta untuk memuatkan kedua-dua titik
+            map.fitBounds([userCoords, kaabaCoords], { padding: [50, 50] });
+        }
+
+        /**
+         * Memaparkan mesej ralat dan memulihkan butang.
+         */
+        function showError(message) {
+            errorMsg.textContent = message;
+            resetButton();
+        }
+
+        /**
+         * Memulihkan keadaan butang kepada asal.
+         */
+        function resetButton() {
+            findBtn.disabled = false;
+            findBtn.textContent = 'Jejak Kiblat Saya Sekarang';
+        }
+
+    </script>
+</body>
+</html>
